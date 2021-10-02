@@ -48,6 +48,9 @@ void main(void) {
             if(viewMenuPointer == 0){
                 if(currentClothLength){
                     previousCurrentClothLength = currentClothLength;
+                    eeprom_write(0x11,previousCurrentClothLength/UINT32_C(10000));
+                    eeprom_write(0x12,(previousCurrentClothLength/100)%100);
+                    eeprom_write(0x13,previousCurrentClothLength%100);
                 }
                 resetCounter += 1;
                 eeprom_write(0x14,resetCounter/UINT32_C(10000));
@@ -66,13 +69,13 @@ void main(void) {
             }
         }
         
-        if(currentClothLength >= (actualClothLength * 10)){
+        if(currentClothLength >= (actualClothLength * 100)){
             relay1 = 1;
         }
         else{
             relay1 = 0;
         }
-        if(currentClothLength >= (warningClothLength * 10)){
+        if(currentClothLength >= (warningClothLength * 100)){
             relay2 = 1;
         }
         else{
@@ -105,12 +108,12 @@ void main(void) {
         viewMenu();
         if(changed){
             if(count == 1){
-                currentClothLength+=countPlus();
+                currentClothLength+=countingPulse;
                 metrePerMinCounter += 1;
                 encoderSkipCount = 0;
             }
             if(count == 2){
-                currentClothLength+=countMinus();
+                currentClothLength-=countingPulse;
                 metrePerMinCounter += 1;
                 encoderSkipCount = 0;
             }     
@@ -162,14 +165,11 @@ void eepromRead(void){
 
     resetCounter = (unsigned int)eeprom_read(0x14)* UINT32_C(10000) + (unsigned int)eeprom_read(0x15)*100 + (unsigned int)eeprom_read(0x16);
     hourMeter = (unsigned int)eeprom_read(0x17)* UINT32_C(10000) + (unsigned int)eeprom_read(0x18)*100 + (unsigned int)eeprom_read(0x19);
-
-    currentClothLengthBalancePlus = (unsigned char)eeprom_read(0x10);
-    currentClothLengthBalanceMinus = (unsigned char)eeprom_read(0x0F);
     
-    if(currentClothLength > UINT32_C(9999)){
+    if(currentClothLength > UINT32_C(999999)){
         currentClothLength = 100;
     }
-    if(previousCurrentClothLength > UINT32_C(9999)){
+    if(previousCurrentClothLength > UINT32_C(999999)){
         previousCurrentClothLength = 100;
     }
     if(actualClothLength > UINT32_C(9999)){
@@ -212,7 +212,7 @@ void __interrupt(high_priority) highISR()
         TMR1H=0x0B;     // Load the time value(0xBDC) for 100ms delay
         TMR1L=0xE5; 
         TMR1IF=0;  
-        if(encoderSkipCount < 200){
+        if(encoderSkipCount){
             hourMeterCounter += 1;
         }
         encoderSkipCount += 1;
@@ -222,14 +222,10 @@ void __interrupt(high_priority) highISR()
             eeprom_write(0x0C,currentClothLength/UINT32_C(10000));
             eeprom_write(0x0D,(currentClothLength/100)%100);
             eeprom_write(0x0E,currentClothLength%100);
-            eeprom_write(0x11,previousCurrentClothLength/UINT32_C(10000));
-            eeprom_write(0x12,(previousCurrentClothLength/100)%100);
-            eeprom_write(0x13,previousCurrentClothLength%100);
-            eeprom_write(0x10,currentClothLengthBalancePlus%100);
-            eeprom_write(0x0F,currentClothLengthBalanceMinus%100);
             eeprom_write(0x17,hourMeter/UINT32_C(10000));
             eeprom_write(0x18,(hourMeter/100)%100);
             eeprom_write(0x19,hourMeter%100);
+            GIE = 0;
     }
     
 
@@ -240,10 +236,10 @@ void __interrupt(high_priority) highISR()
 void viewMenu(){
     
     if(viewMenuPointer == 0  && editMenuPointer == 0){
-        display1(currentClothLength);
+        display1(currentClothLength/10);
     }
     if(viewMenuPointer == 1  && editMenuPointer == 0){
-        display1(previousCurrentClothLength);
+        display1(previousCurrentClothLength/10);
     }
     if(viewMenuPointer == 2  && editMenuPointer == 0){
         display1(resetCounter);
@@ -449,7 +445,14 @@ void display1(uint32_t value){
         dataPass (0x00);
     }
     else{
-        dataPass(segCode[(value/100)%10]);
+        uint8_t dot = 0;
+        if(viewMenuPointer == 1 || viewMenuPointer == 0){
+            dot = 0x20;
+        }
+        if(editMenuPointer){
+            dot = 0;
+        }
+        dataPass(segCode[(value/100)%10] | dot);
     }
     A = 0;
     B = 0;
@@ -461,11 +464,11 @@ void display1(uint32_t value){
         dataPass (0x00);
     }
     else{
-        uint8_t dot = 0x20;
-        if(editMenuPointer || viewMenuPointer == 2){
-            dot = 0;
+        uint8_t dot1 = 0;
+        if(editMenuPointer == 1 || editMenuPointer == 2 || viewMenuPointer == 3){
+            dot1 = 0x20;
         }
-        dataPass(segCode[(value/10)%10] | dot);
+        dataPass(segCode[(value/10)%10] | dot1);
     }
     A = 0;
     B = 0;
@@ -733,7 +736,7 @@ void encoder(void){
     if(currentClothLength > UINT32_C(1000010)){
         currentClothLength = 0;
     }
-    if(currentClothLength > UINT32_C(99999)){
-        currentClothLength = UINT32_C(99999);
+    if(currentClothLength > UINT32_C(999999)){
+        currentClothLength = UINT32_C(999999);
     }
 }
